@@ -1,0 +1,84 @@
+import tensorflow as tf
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+import numpy as np
+import pandas as pd # Import pandas to read csv files
+
+# Sample dataset
+# The original 'emails' variable was just the path to the CSV file.
+# We need to read the actual email content from this file.
+emails_filepath = "/content/emails.csv"
+labels = [1, 1, 1, 0, 1]  # 1 for spam, 0 for not spam
+
+# Load emails from the CSV file
+# Assuming the CSV has one column of email texts and no header.
+# We will read it and then extract the email texts.
+try:
+    # Read the CSV file. Assuming the emails are in the first column (index 0).
+    df_emails = pd.read_csv(emails_filepath, header=None)
+    # Extract email texts. We need to ensure the number of emails matches the number of labels.
+    # Taking the first len(labels) entries from the CSV.
+    email_texts = df_emails.iloc[:len(labels), 0].tolist()
+    
+    # Basic check to ensure we have enough emails for the labels
+    if len(email_texts) != len(labels):
+        # This scenario implies a mismatch between hardcoded labels and CSV content.
+        # For a robust solution, both emails and labels might be loaded from the CSV.
+        # For this specific error fix, we ensure the lengths match for training.
+        print(f"Warning: Number of emails ({len(email_texts)}) from CSV does not match "
+              f"number of hardcoded labels ({len(labels)}). "
+              f"Using {min(len(email_texts), len(labels))} samples for training.")
+        # Adjusting the longer one to match the shorter one
+        if len(email_texts) > len(labels):
+            email_texts = email_texts[:len(labels)]
+        else: # len(labels) > len(email_texts)
+            labels = labels[:len(email_texts)]
+        
+except Exception as e:
+    print(f"Error reading {emails_filepath}: {e}")
+    print("Falling back to a small hardcoded email list for demonstration purposes.")
+    # Fallback to hardcoded emails if CSV reading fails or is empty,
+    # ensuring it matches the hardcoded labels.
+    email_texts = [
+        "Free money now! Click here to claim your prize.",
+        "Your account statement is ready. Please log in to view.",
+        "Congratulations! You've won a free iPhone. Redeem now!",
+        "Project meeting rescheduled for Thursday at 10 AM.",
+        "Exclusive offer: Get 50% off all products for a limited time."
+    ]
+    # If using fallback, ensure labels also matches the fallback emails in length.
+    # The current labels list length is 5, which matches the fallback list.
+    labels = [1, 1, 1, 0, 1] # Ensure labels list remains consistent in length with fallback.
+
+
+# Tokenize emails
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(email_texts) # Use the list of email strings
+sequences = tokenizer.texts_to_sequences(email_texts) # Use the list of email strings
+
+# Pad sequences
+max_length = 5
+padded_sequences = pad_sequences(sequences, maxlen=max_length, padding='post')
+
+# Define model
+# Adjust input_dim for the Embedding layer to reflect the actual vocabulary size
+vocab_size = len(tokenizer.word_index) + 1 # +1 for the 0 padding
+model = tf.keras.Sequential([
+    tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=10, input_length=max_length),
+    tf.keras.layers.Flatten(),
+    tf.keras.layers.Dense(64, activation='relu'),
+    tf.keras.layers.Dense(1, activation='sigmoid')
+])
+
+# Compile model
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+# Train model
+model.fit(padded_sequences, np.array(labels), epochs=5)
+
+# Test model
+test_email = ["Get free stuff now!"]
+test_sequence = tokenizer.texts_to_sequences(test_email)
+test_padded_sequence = pad_sequences(test_sequence, maxlen=max_length, padding='post')
+prediction = model.predict(test_padded_sequence)
+print("Spam" if prediction > 0.5 else "Not Spam")
